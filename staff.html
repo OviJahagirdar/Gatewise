@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Staff</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="bar">
+    <h1>Staff</h1>
+    <a href="home.html">Back</a>
+  </header>
+
+  <main>
+    <label for="q">Search by name</label>
+    <input id="q" type="search" placeholder="e.g. Sunita" autocomplete="off">
+    <p id="msg" class="msg" role="alert"></p>
+    <ul id="staff" class="list"></ul>
+  </main>
+
+  <script src="app.js"></script>
+  <script>
+    requireLogin();
+
+    const q = document.getElementById("q");
+    const listEl = document.getElementById("staff");
+    const msg = document.getElementById("msg");
+
+    async function load() {
+      try {
+        // Two calls: matching staff, and everyone currently inside (to know who can "Log out")
+        const [staff, inside] = await Promise.all([
+          callApi("/staff?search=" + encodeURIComponent(q.value.trim())),
+          callApi("/entries/inside"),
+        ]);
+        // staff_id -> the open entry, so Exit knows which entry to close
+        const openEntry = {};
+        inside.filter((e) => e.entry_type === "staff" && e.staff).forEach((e) => { openEntry[e.staff.id] = e.id; });
+
+        if (staff.length === 0) {
+          listEl.innerHTML = '<li class="empty">No staff found with that name.</li>';
+          return;
+        }
+        listEl.innerHTML = staff.map((s) => {
+          const entryId = openEntry[s.id];
+          // verification_status is 'verified', 'pending' or 'not_done'
+          const status = { verified: "Verified", pending: "Pending" }[s.verification_status] || "Not verified";
+          const good = s.verification_status === "verified";
+          const action = entryId
+            ? `<button class="exit" data-exit="${entryId}">Log out</button>`
+            : `<button class="go" data-in="${s.id}">Log in</button>`;
+          return `
+            <li class="row" ${entryId ? "" : 'style="border-left-color: var(--line)"'}>
+              <div>
+                <div class="name">${esc(s.name)}</div>
+                <div class="meta">${esc(s.role)} · <span class="badge ${good ? "" : "pending"}">${status}</span></div>
+              </div>
+              ${action}
+            </li>`;
+        }).join("");
+      } catch (err) {
+        showMsg(msg, err.message, "error");
+      }
+    }
+
+    listEl.addEventListener("click", async (ev) => {
+      const btn = ev.target.closest("button");
+      if (!btn) return;
+      btn.disabled = true;
+      try {
+        if (btn.dataset.in) {
+          await callApi("/entries", {
+            method: "POST",
+            body: JSON.stringify({ entry_type: "staff", staff_id: Number(btn.dataset.in) }),
+          });
+        } else {
+          await callApi(`/entries/${btn.dataset.exit}/exit`, { method: "POST" });
+        }
+        showMsg(msg, "");
+        load();
+      } catch (err) {
+        showMsg(msg, err.message, "error");
+        btn.disabled = false;
+      }
+    });
+
+    // Wait a moment after typing stops before searching
+    let timer;
+    q.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(load, 250); });
+
+    load();
+  </script>
+</body>
+</html>

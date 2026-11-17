@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Log entry</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="bar">
+    <h1 id="title">Log entry</h1>
+    <a href="home.html">Back</a>
+  </header>
+
+  <main>
+    <label for="flatSearch">Flat</label>
+    <input id="flatSearch" type="search" placeholder="Type A-101, or just 101" autocomplete="off">
+    <p id="chosen" class="chosen"></p>
+    <ul id="flats" class="list"></ul>
+
+    <label for="name" id="nameLabel">Name (optional)</label>
+    <input id="name" type="text" autocomplete="off">
+
+    <label for="phone">Phone (optional)</label>
+    <input id="phone" type="tel" inputmode="numeric" autocomplete="off">
+
+    <label for="note">Note (optional)</label>
+    <input id="note" type="text" autocomplete="off">
+
+    <p id="msg" class="msg" role="alert"></p>
+    <button id="save" class="primary full" disabled>Save entry</button>
+  </main>
+
+  <script src="app.js"></script>
+  <script>
+    requireLogin();
+
+    // entry.html?type=visitor  or  entry.html?type=delivery
+    const type = new URLSearchParams(location.search).get("type") === "delivery" ? "delivery" : "visitor";
+    document.getElementById("title").textContent = type === "delivery" ? "Delivery" : "Visitor";
+    document.getElementById("nameLabel").textContent =
+      type === "delivery" ? "Company or courier (optional)" : "Visitor name (optional)";
+
+    const search = document.getElementById("flatSearch");
+    const flatsEl = document.getElementById("flats");
+    const chosenEl = document.getElementById("chosen");
+    const saveBtn = document.getElementById("save");
+    const msg = document.getElementById("msg");
+
+    let allFlats = [];
+    let selected = null; // the flat the guard tapped
+
+    function renderFlats() {
+      const q = search.value.trim().toLowerCase().replace(/\s+/g, "");
+      // Show at most 8 matches so the list stays short on a phone
+      const matches = allFlats
+        .filter((f) => f.label.toLowerCase().includes(q))
+        .slice(0, 8);
+
+      if (matches.length === 0) {
+        flatsEl.innerHTML = '<li class="empty">No flat matches. Check the number.</li>';
+        return;
+      }
+      flatsEl.innerHTML = matches.map((f) => {
+        const label = f.label;
+        const cls = selected && selected.id === f.id ? "pick selected" : "pick";
+        return `<li><button class="${cls} full" data-id="${f.id}">${esc(label)}</button></li>`;
+      }).join("");
+    }
+
+    flatsEl.addEventListener("click", (ev) => {
+      const btn = ev.target.closest("button[data-id]");
+      if (!btn) return;
+      selected = allFlats.find((f) => f.id === Number(btn.dataset.id));
+      chosenEl.textContent = "Going to " + selected.label;
+      saveBtn.disabled = false;
+      renderFlats();
+    });
+    search.addEventListener("input", renderFlats);
+
+    saveBtn.addEventListener("click", async () => {
+      saveBtn.disabled = true;
+      showMsg(msg, "Saving…");
+      try {
+        await callApi("/entries", {
+          method: "POST",
+          body: JSON.stringify({
+            entry_type: type,
+            flat_id: selected.id,
+            visitor_name: document.getElementById("name").value.trim(),
+            visitor_phone: document.getElementById("phone").value.trim(),
+            note: document.getElementById("note").value.trim(),
+          }),
+        });
+        showMsg(msg, "Saved!", "ok");
+        setTimeout(() => { location.href = "home.html"; }, 600);
+      } catch (err) {
+        showMsg(msg, err.message, "error");
+        saveBtn.disabled = false;
+      }
+    });
+
+    (async () => {
+      try {
+        allFlats = await callApi("/flats");
+        renderFlats();
+      } catch (err) {
+        showMsg(msg, err.message, "error");
+      }
+    })();
+  </script>
+</body>
+</html>

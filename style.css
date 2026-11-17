@@ -1,0 +1,84 @@
+/* Shared look for all guard pages. Built for a phone, used outdoors:
+   high contrast, big tap targets, almost no decoration. */
+:root {
+  --ink: #14213d;
+  --paper: #f2f5f7;
+  --line: #d5dce3;
+  --muted: #5b6776;
+  --gate: #ffc400;   /* barrier yellow: main action color */
+  --in: #1b7f4b;     /* green: someone is inside */
+  --out: #b3261e;    /* red: exit / errors */
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font: 18px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+}
+/* Barrier-stripe edge under the header: the one decorative touch */
+.bar {
+  position: sticky; top: 0; z-index: 5;
+  background: var(--ink); color: #fff;
+  padding: 14px 16px;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  border-bottom: 6px solid transparent;
+  border-image: repeating-linear-gradient(45deg, var(--gate) 0 12px, var(--ink) 12px 24px) 6;
+}
+.bar h1 { font-size: 20px; margin: 0; }
+.bar small { display: block; font-size: 14px; color: #b9c2d0; font-weight: 400; }
+.bar a, .bar button.link {
+  color: var(--gate); background: none; border: 0; font-size: 17px;
+  font-weight: 600; text-decoration: none; padding: 8px 0; min-height: 44px;
+}
+main { padding: 16px; max-width: 520px; margin: 0 auto; }
+h2 { font-size: 20px; margin: 24px 0 10px; }
+
+/* Buttons */
+button, .btn {
+  font: inherit; font-weight: 700; cursor: pointer;
+  min-height: 56px; border-radius: 14px; border: 2px solid var(--ink);
+  background: #fff; color: var(--ink); padding: 0 18px;
+  display: inline-flex; align-items: center; justify-content: center;
+  text-decoration: none;
+}
+button:focus-visible, .btn:focus-visible, input:focus-visible {
+  outline: 3px solid var(--ink); outline-offset: 2px;
+}
+button.primary, .btn.primary { background: var(--gate); }
+button.go { background: var(--in); border-color: var(--in); color: #fff; }
+button.exit { background: #fff; color: var(--out); border-color: var(--out); min-height: 48px; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+.full { width: 100%; }
+
+/* Home: three big action tiles */
+.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.tiles .btn { min-height: 104px; font-size: 19px; flex-direction: column; gap: 4px; }
+
+/* Forms */
+label { display: block; font-weight: 600; margin: 16px 0 6px; }
+input[type=text], input[type=password], input[type=search], input[type=tel] {
+  width: 100%; min-height: 56px; font: inherit; padding: 0 14px;
+  border: 2px solid var(--line); border-radius: 12px; background: #fff; color: var(--ink);
+}
+
+/* Lists */
+.list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.row {
+  background: #fff; border: 1px solid var(--line); border-left: 6px solid var(--in);
+  border-radius: 12px; padding: 12px 14px;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+.row .name { font-weight: 700; }
+.row .meta { color: var(--muted); font-size: 15px; }
+.pick { width: 100%; justify-content: flex-start; text-align: left; min-height: 52px; font-weight: 600; }
+.pick.selected { background: var(--gate); }
+.badge { font-size: 13px; font-weight: 700; color: var(--in); }
+.badge.pending { color: var(--out); }
+
+/* Messages */
+.msg { min-height: 24px; margin: 12px 0; font-weight: 600; }
+.msg.error { color: var(--out); }
+.msg.ok { color: var(--in); }
+.empty { color: var(--muted); padding: 12px 0; }
+.chosen { margin: 10px 0 0; font-weight: 700; }

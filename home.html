@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gate</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="bar">
+    <h1>Gate <small id="who"></small></h1>
+    <button class="link" id="logout">Log out</button>
+  </header>
+
+  <main>
+    <div class="tiles">
+      <a class="btn primary" href="entry.html?type=visitor">Visitor</a>
+      <a class="btn primary" href="entry.html?type=delivery">Delivery</a>
+      <a class="btn" href="staff.html">Staff</a>
+    </div>
+
+    <h2>Inside now</h2>
+    <p id="msg" class="msg" role="alert"></p>
+    <ul id="inside" class="list"></ul>
+  </main>
+
+  <script src="app.js"></script>
+  <script>
+    requireLogin();
+    document.getElementById("who").textContent = getUser().full_name || "";
+    document.getElementById("logout").addEventListener("click", logout);
+
+    const list = document.getElementById("inside");
+    const msg = document.getElementById("msg");
+
+    async function load() {
+      try {
+        const rows = await callApi("/entries/inside");
+        if (rows.length === 0) {
+          list.innerHTML = '<li class="empty">Nobody is inside right now.</li>';
+          return;
+        }
+        list.innerHTML = rows.map((e) => `
+          <li class="row">
+            <div>
+              <div class="name">${esc(entryTitle(e))}</div>
+              <div class="meta">${esc(e.entry_type)} · ${esc(flatLabel(e))} · in at ${esc(timeLabel(e.entry_time))}</div>
+            </div>
+            <button class="exit" data-id="${e.id}">Exit</button>
+          </li>`).join("");
+      } catch (err) {
+        showMsg(msg, err.message, "error");
+      }
+    }
+
+    // One listener for every Exit button in the list
+    list.addEventListener("click", async (ev) => {
+      const btn = ev.target.closest("button.exit");
+      if (!btn) return;
+      btn.disabled = true;
+      try {
+        await callApi(`/entries/${btn.dataset.id}/exit`, { method: "POST" });
+        showMsg(msg, "");
+        load();
+      } catch (err) {
+        showMsg(msg, err.message, "error");
+        btn.disabled = false;
+      }
+    });
+
+    load();
+    setInterval(load, 30000); // refresh every 30s in case another guard logs someone
+  </script>
+</body>
+</html>
