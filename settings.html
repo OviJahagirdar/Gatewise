@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Settings — Society Gate</title>
+  <style>
+    /* Printing this page should show just the QR check-in box. */
+    @media print {
+      .topbar, .no-print { display: none !important; }
+      body { background: #fff; }
+      .card { border: none; }
+    }
+    .qr-box { text-align: center; padding: 24px; border: 2px dashed #cbd5e1; border-radius: 10px; }
+    .qr-link { font-size: 20px; font-weight: 700; word-break: break-all; margin: 12px 0; }
+    .qr-code { font-size: 40px; letter-spacing: 2px; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Settings</h1>
+  <p class="hint" id="society-name">Loading society details…</p>
+
+  <!-- QR check-in link for the gate -->
+  <div class="card">
+    <h2>QR check-in link for the gate</h2>
+    <div class="qr-box">
+      <div class="qr-code">[ QR ]</div>
+      <p class="hint" style="margin:8px 0 0">
+        Print this page or write the link on a board at the gate. A visitor opens it and
+        checks themselves in when no guard is around.
+      </p>
+      <p class="qr-link" id="qr-link">—</p>
+      <div class="no-print">
+        <button type="button" id="copy-button" class="secondary">Copy link</button>
+        <button type="button" id="print-button" class="secondary">Print</button>
+      </div>
+      <p id="qr-message" class="message" hidden></p>
+    </div>
+  </div>
+
+  <!-- Retention days -->
+  <div class="card">
+    <h2>Log retention</h2>
+    <p class="hint">
+      Entries older than this many days are removed by "Purge old entries".
+    </p>
+    <form id="retention-form" class="row">
+      <div class="field" style="max-width:180px">
+        <label for="retention-days">Keep entries for (days)</label>
+        <input id="retention-days" type="number" min="1" max="3650">
+      </div>
+      <div class="field" style="flex:0 0 auto">
+        <button type="submit">Save</button>
+      </div>
+    </form>
+    <p id="retention-message" class="message" hidden></p>
+  </div>
+
+  <!-- Clean-up buttons -->
+  <div class="card">
+    <h2>Clean up the log</h2>
+
+    <p class="hint">Deletes entries older than the retention period above. Cannot be undone.</p>
+    <button type="button" id="purge-button" class="secondary">Purge old entries</button>
+    <p id="purge-message" class="message" hidden></p>
+
+    <hr style="border:none;border-top:1px solid #e2e8f0;margin:22px 0">
+
+    <p class="hint">
+      <strong>Delete everything</strong> empties the gate log for this society completely.
+      There is no undo. Type <strong>DELETE</strong> in the box to enable the button.
+    </p>
+    <div class="row">
+      <div class="field" style="max-width:220px">
+        <label for="delete-confirm">Type DELETE to confirm</label>
+        <input id="delete-confirm" autocomplete="off" placeholder="DELETE">
+      </div>
+      <div class="field" style="flex:0 0 auto">
+        <button type="button" id="delete-button" class="danger" disabled>Delete everything</button>
+      </div>
+    </div>
+    <p id="delete-message" class="message" hidden></p>
+  </div>
+</main>
+
+<script src="app.js"></script>
+<script>
+  let society = null;
+
+  // The contract has no "get my society" endpoint in the list, so: ask for
+  // /api/society (if Person 1 adds it), otherwise use the copy saved at
+  // login/onboarding, which carries retention_days and qr_token.
+  async function loadSociety() {
+    try {
+      const data = await callApi("/api/society");
+      const found = (data && data.society) ? data.society : data;
+      if (found && found.id) {
+        localStorage.setItem(SOCIETY_KEY, JSON.stringify(found));
+        return found;
+      }
+    } catch (ignored) {
+      // No such endpoint yet — fall through to the cached copy.
+    }
+    const cached = localStorage.getItem(SOCIETY_KEY);
+    return cached ? JSON.parse(cached) : null;
+  }
+
+  function renderSociety() {
+    if (!society) {
+      document.getElementById("society-name").textContent =
+        "Society details not available yet. Ask Person 1 to return the society row at login, " +
+        "or add GET /api/society.";
+      return;
+    }
+
+    document.getElementById("society-name").textContent =
+      (society.name || "Society") + (society.city ? ", " + society.city : "");
+
+    if (society.retention_days) {
+      document.getElementById("retention-days").value = society.retention_days;
+    }
+
+    if (society.qr_token) {
+      // Exactly the link shape from the contract.
+      document.getElementById("qr-link").textContent =
+        window.location.origin + "/checkin/?t=" + society.qr_token;
+    } else {
+      document.getElementById("qr-link").textContent =
+        "No qr_token available yet — ask Person 1 to send it with the society row.";
+    }
+  }
+
+  // ---- Retention days (needs a small PATCH on Person 1's side) ----
+  document.getElementById("retention-form").addEventListener("submit", async function (event) {
+    event.preventDefault();
+    clearMessage("retention-message");
+
+    const days = Number(document.getElementById("retention-days").value);
+    try {
+      await callApi("/api/society", {
+        method: "PATCH",
+        body: JSON.stringify({ retention_days: days }),
+      });
+      if (society) {
+        society.retention_days = days;
+        localStorage.setItem(SOCIETY_KEY, JSON.stringify(society));
+      }
+      showMessage("retention-message", "Retention period saved: " + days + " days.", false);
+    } catch (error) {
+      showMessage(
+        "retention-message",
+        "Could not save the retention period (" + error.message + "). " +
+        "The backend needs a PATCH /api/society route — ask Person 1 to add it.",
+        true
+      );
+    }
+  });
+
+  // ---- Purge old entries ----
+  document.getElementById("purge-button").addEventListener("click", async function () {
+    clearMessage("purge-message");
+    try {
+      const result = await callApi("/api/admin/purge-old", { method: "POST" });
+      const removed = (result && result.deleted) ?? 0;
+      showMessage("purge-message", "Done. " + removed + " old entries removed.", false);
+    } catch (error) {
+      showMessage("purge-message", "Could not purge: " + error.message, true);
+    }
+  });
+
+  // ---- Delete everything: the button stays disabled until the word DELETE
+  // is typed exactly, so nobody can wipe the log with a single click. ----
+  const confirmInput = document.getElementById("delete-confirm");
+  const deleteButton = document.getElementById("delete-button");
+
+  confirmInput.addEventListener("input", function () {
+    deleteButton.disabled = confirmInput.value.trim() !== "DELETE";
+  });
+
+  deleteButton.addEventListener("click", async function () {
+    if (confirmInput.value.trim() !== "DELETE") return;
+    clearMessage("delete-message");
+
+    try {
+      await callApi("/api/admin/delete-everything", { method: "POST" });
+      confirmInput.value = "";
+      deleteButton.disabled = true;
+      showMessage("delete-message", "All gate entries for this society have been deleted.", false);
+    } catch (error) {
+      showMessage("delete-message", "Could not delete: " + error.message, true);
+    }
+  });
+
+  document.getElementById("copy-button").addEventListener("click", async function () {
+    const link = document.getElementById("qr-link").textContent;
+    try {
+      await navigator.clipboard.writeText(link);
+      showMessage("qr-message", "Link copied.", false);
+    } catch (error) {
+      showMessage("qr-message", "Copy failed — select the link text and copy it by hand.", true);
+    }
+  });
+
+  document.getElementById("print-button").addEventListener("click", function () {
+    window.print();
+  });
+
+  (async function start() {
+    const me = await requireAdmin();
+    if (!me) return;
+    renderNav("settings.html");
+    society = await loadSociety();
+    renderSociety();
+  })();
+</script>
+</body>
+</html>

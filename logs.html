@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gate logs — Society Gate</title>
+</head>
+<body>
+<main>
+  <h1>Gate logs</h1>
+  <p class="hint">Every visitor, delivery and staff entry for your society.</p>
+
+  <!-- Filters: GET /api/entries?date_from=&date_to=&entry_type=&search= -->
+  <div class="card">
+    <h2>Filter</h2>
+    <form id="filter-form" class="row">
+      <div class="field">
+        <label for="date-from">From date</label>
+        <input id="date-from" type="date">
+      </div>
+      <div class="field">
+        <label for="date-to">To date</label>
+        <input id="date-to" type="date">
+      </div>
+      <div class="field">
+        <label for="entry-type">Type</label>
+        <select id="entry-type">
+          <option value="">All types</option>
+          <option value="visitor">Visitor</option>
+          <option value="delivery">Delivery</option>
+          <option value="staff">Staff</option>
+        </select>
+      </div>
+      <div class="field" style="flex:2 1 220px">
+        <label for="search">Search name / flat / phone</label>
+        <input id="search" placeholder="Rahul, A-101, 98765…">
+      </div>
+      <div class="field" style="flex:0 0 auto">
+        <button type="submit">Show logs</button>
+      </div>
+      <div class="field" style="flex:0 0 auto">
+        <button type="button" id="csv-button" class="secondary">Download CSV</button>
+      </div>
+    </form>
+    <p id="status" class="message" hidden></p>
+  </div>
+
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Type</th>
+          <th>Name</th>
+          <th>Flat</th>
+          <th>Source</th>
+          <th>Exit time</th>
+        </tr>
+      </thead>
+      <tbody id="entries-body">
+        <tr><td colspan="6" class="hint">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</main>
+
+<script src="app.js"></script>
+<script>
+  const entriesBody = document.getElementById("entries-body");
+  const filterForm = document.getElementById("filter-form");
+
+  // Turns the filter form into "?date_from=…&date_to=…&entry_type=…&search=…".
+  // Empty fields are left out, so the backend sees no filter for them.
+  function filterParams() {
+    const params = new URLSearchParams();
+
+    const dateFrom = document.getElementById("date-from").value;
+    const dateTo = document.getElementById("date-to").value;
+    const entryType = document.getElementById("entry-type").value;
+    const search = document.getElementById("search").value.trim();
+
+    if (dateFrom) params.set("date_from", dateFrom);
+    if (dateTo) params.set("date_to", dateTo);
+    if (entryType) params.set("entry_type", entryType);
+    if (search) params.set("search", search);
+
+    return params;
+  }
+
+  // A staff entry has entry.staff.name, a visitor entry has entry.visitor_name.
+  function entryName(entry) {
+    if (entry.staff && entry.staff.name) return entry.staff.name;
+    if (entry.visitor_name) return entry.visitor_name;
+    return "—";
+  }
+
+  function renderRows(entries) {
+    if (entries.length === 0) {
+      entriesBody.innerHTML = '<tr><td colspan="6" class="hint">No entries match these filters.</td></tr>';
+      return;
+    }
+
+    let html = "";
+    for (const entry of entries) {
+      const exitCell = entry.exit_time
+        ? escapeHtml(formatDateTime(entry.exit_time))
+        : '<span class="badge pending">inside</span>';
+
+      html +=
+        "<tr>" +
+        "<td>" + escapeHtml(formatDateTime(entry.entry_time)) + "</td>" +
+        '<td><span class="badge">' + escapeHtml(entry.entry_type) + "</span></td>" +
+        "<td>" + escapeHtml(entryName(entry)) + "</td>" +
+        "<td>" + escapeHtml(entry.flat ? flatLabel(entry.flat) : "—") + "</td>" +
+        "<td>" + escapeHtml(entry.source || "—") + "</td>" +
+        "<td>" + exitCell + "</td>" +
+        "</tr>";
+    }
+    entriesBody.innerHTML = html;
+  }
+
+  async function loadEntries() {
+    showMessage("status", "Loading…", false);
+    try {
+      const data = await callApi("/api/entries?" + filterParams().toString());
+      // The backend may send a plain list or {entries: [...]} — accept both.
+      const entries = Array.isArray(data) ? data : (data.entries || []);
+      renderRows(entries);
+      showMessage("status", entries.length + " " + (entries.length === 1 ? "entry" : "entries") + " found.", false);
+    } catch (error) {
+      entriesBody.innerHTML = "";
+      showMessage("status", "Could not load the logs: " + error.message, true);
+    }
+  }
+
+  // The CSV endpoint needs the login token, so a plain <a href="…"> link would
+  // come back "not logged in". Instead: fetch with the header, get a Blob, and
+  // click a temporary download link we create ourselves.
+  async function downloadCsv() {
+    showMessage("status", "Preparing CSV…", false);
+    try {
+      const response = await fetch("/api/entries/export-csv?" + filterParams().toString(), {
+        headers: { "Authorization": "Bearer " + getToken() },
+      });
+
+      if (response.status === 401) {
+        window.location.href = "login.html";
+        return;
+      }
+      if (!response.ok) {
+        throw new Error("server answered " + response.status);
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "gate-logs.csv";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+
+      showMessage("status", "CSV downloaded — open it in Excel or Google Sheets.", false);
+    } catch (error) {
+      showMessage("status", "Could not download the CSV: " + error.message, true);
+    }
+  }
+
+  filterForm.addEventListener("submit", function (event) {
+    event.preventDefault();
+    loadEntries();
+  });
+
+  document.getElementById("csv-button").addEventListener("click", downloadCsv);
+
+  // Page start: check the login first, then draw the nav and load the logs.
+  (async function start() {
+    const me = await requireAdmin();
+    if (!me) return;
+    renderNav("logs.html");
+    loadEntries();
+  })();
+</script>
+</body>
+</html>

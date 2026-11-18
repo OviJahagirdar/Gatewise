@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Create a society — Society Gate</title>
+</head>
+<body>
+<main>
+  <div class="card auth-card">
+    <h1>Create a new society</h1>
+    <p class="hint">
+      This makes the society and your committee (admin) login in one step.
+      You can add flats and guards on the next pages.
+    </p>
+
+    <form id="onboard-form">
+      <div class="field">
+        <label for="society-name">Society name</label>
+        <input id="society-name" placeholder="Demo Heights" required>
+      </div>
+      <div class="field field-gap">
+        <label for="city">City</label>
+        <input id="city" placeholder="Pune" required>
+      </div>
+      <div class="field field-gap">
+        <label for="full-name">Your name</label>
+        <input id="full-name" placeholder="Asha K" required>
+      </div>
+      <div class="field field-gap">
+        <label for="username">Username</label>
+        <input id="username" autocomplete="username" placeholder="admin" required>
+      </div>
+      <div class="field field-gap">
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="new-password" minlength="4" required>
+      </div>
+
+      <p id="message" class="message" hidden></p>
+      <button type="submit" id="submit-button" style="width:100%;margin-top:16px">
+        Create society and log in
+      </button>
+    </form>
+
+    <p class="hint" style="margin-top:18px">
+      Already have a login? <a href="login.html">Log in instead</a>.
+    </p>
+  </div>
+</main>
+
+<script src="app.js"></script>
+<script>
+  const form = document.getElementById("onboard-form");
+  const submitButton = document.getElementById("submit-button");
+
+  // Step 1: POST /api/societies  -> creates the society + first admin user.
+  // Step 2: POST /api/login      -> gets the token, so the user is logged in.
+  // Step 3: go to logs.html.
+  form.addEventListener("submit", async function (event) {
+    event.preventDefault();
+    clearMessage("message");
+    submitButton.disabled = true;
+
+    const societyName = document.getElementById("society-name").value.trim();
+    const city = document.getElementById("city").value.trim();
+    const fullName = document.getElementById("full-name").value.trim();
+    const username = document.getElementById("username").value.trim();
+    const password = document.getElementById("password").value;
+
+    try {
+      // Field names follow the societies + users tables in the contract.
+      const created = await callApi("/api/societies", {
+        method: "POST",
+        body: JSON.stringify({
+          name: societyName,
+          city: city,
+          full_name: fullName,
+          username: username,
+          password: password,
+        }),
+      });
+
+      // Remember the new society row: settings.html needs its qr_token and
+      // retention_days. The response may be the society itself or {society:…}.
+      const society = (created && created.society) ? created.society : created;
+      if (society && society.id) {
+        localStorage.setItem(SOCIETY_KEY, JSON.stringify(society));
+      }
+
+      const response = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: username, password: password }),
+      });
+      const login = await response.json().catch(function () { return {}; });
+      if (!response.ok) {
+        throw new Error("Society created, but logging in failed: " + (login.detail || response.status));
+      }
+
+      const token = saveLogin(login);
+      if (!token) throw new Error("Society created, but the server did not return a login token.");
+
+      window.location.href = "logs.html";
+    } catch (error) {
+      showMessage("message", error.message, true);
+      submitButton.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

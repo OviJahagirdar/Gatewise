@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Visitor check-in</title>
+  <style>
+    /* This page is opened on a visitor's phone, so it is big and simple. */
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: #f6f7f9; color: #1f2933;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+      font-size: 17px;
+    }
+    main { max-width: 460px; margin: 0 auto; padding: 20px 16px 40px; }
+    header { background: #0f172a; color: #fff; padding: 18px 16px; text-align: center; border-radius: 10px; }
+    header h1 { font-size: 20px; margin: 0 0 4px; }
+    header p { margin: 0; font-size: 13px; color: #cbd5e1; }
+    .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px; margin-top: 16px; }
+    label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+    input, select {
+      width: 100%; padding: 12px; font: inherit; border: 1px solid #cbd5e1;
+      border-radius: 8px; background: #fff;
+    }
+    .field { margin-bottom: 16px; }
+    .types { display: flex; gap: 10px; }
+    .types label {
+      flex: 1; margin: 0; padding: 14px 10px; text-align: center; cursor: pointer;
+      border: 2px solid #cbd5e1; border-radius: 8px; font-weight: 600;
+    }
+    .types input { display: none; }
+    .types input:checked + span { color: #1d4ed8; }
+    .types label:has(input:checked) { border-color: #1d4ed8; background: #eff6ff; }
+    button {
+      width: 100%; padding: 16px; font: inherit; font-weight: 700; font-size: 17px;
+      border: none; border-radius: 8px; background: #1d4ed8; color: #fff; cursor: pointer;
+    }
+    button:disabled { opacity: .5; }
+    .message { padding: 12px; border-radius: 8px; margin-top: 14px; font-size: 15px; line-height: 1.45; }
+    .message.ok { background: #dcfce7; color: #166534; }
+    .message.error { background: #fee2e2; color: #991b1b; }
+    .success { text-align: center; padding: 10px 0; }
+    .success .tick { font-size: 52px; color: #16a34a; line-height: 1; }
+    .hint { color: #64748b; font-size: 13px; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1 id="society-name">Checking the link…</h1>
+    <p>Visitor self check-in</p>
+  </header>
+
+  <p id="message" class="message" hidden></p>
+
+  <div class="card" id="form-card" hidden>
+    <form id="checkin-form">
+      <div class="field">
+        <label>I am a</label>
+        <div class="types">
+          <label><input type="radio" name="entry_type" value="visitor" checked><span>Visitor</span></label>
+          <label><input type="radio" name="entry_type" value="delivery"><span>Delivery</span></label>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="visitor-name">Your name</label>
+        <input id="visitor-name" placeholder="Rahul" required>
+      </div>
+
+      <div class="field">
+        <label for="visitor-phone">Phone (optional)</label>
+        <input id="visitor-phone" type="tel" inputmode="tel" placeholder="9876543210">
+      </div>
+
+      <div class="field">
+        <label for="flat">Which flat are you visiting?</label>
+        <select id="flat" required>
+          <option value="">Choose a flat…</option>
+        </select>
+      </div>
+
+      <button type="submit" id="submit-button">Check in</button>
+      <p class="hint" style="text-align:center;margin:12px 0 0">
+        Please wait at the gate after checking in.
+      </p>
+    </form>
+  </div>
+
+  <div class="card success" id="success-card" hidden>
+    <div class="tick">✓</div>
+    <p><strong>Check-in recorded, please wait at the gate.</strong></p>
+  </div>
+</main>
+
+<script>
+  // No login on this page: the society is identified by the ?t= token in the
+  // QR link, which is the society's qr_token from the database.
+  const params = new URLSearchParams(window.location.search);
+  const qrToken = params.get("t");
+  const apiUrl = "/api/checkin/" + encodeURIComponent(qrToken || "");
+
+  function showMessage(text, isError) {
+    const element = document.getElementById("message");
+    element.textContent = text;
+    element.className = "message " + (isError ? "error" : "ok");
+    element.hidden = false;
+  }
+
+  function showInvalidQr() {
+    document.getElementById("society-name").textContent = "Invalid QR code";
+    showMessage(
+      "This link does not match any society. Please ask the guard to check you in, " +
+      "or scan the QR code at the gate again.",
+      true
+    );
+  }
+
+  // On load: GET /api/checkin/{token} gives the society name and the flat list.
+  async function loadCheckin() {
+    if (!qrToken) {
+      showInvalidQr();
+      return;
+    }
+
+    let response;
+    try {
+      response = await fetch(apiUrl);
+    } catch (error) {
+      showMessage("Could not reach the gate server. Please ask the guard to check you in.", true);
+      return;
+    }
+
+    if (response.status === 404) {
+      showInvalidQr();
+      return;
+    }
+    if (!response.ok) {
+      showMessage("Could not open the check-in form (error " + response.status + ").", true);
+      return;
+    }
+
+    const data = await response.json();
+
+    // The backend may send {society: {...}, flats: [...]} or a flat shape like
+    // {society_name: "...", flats: [...]} — read whichever is there.
+    const society = data.society || {};
+    const societyName = society.name || data.society_name || data.name || "Your society";
+    const flats = data.flats || [];
+
+    document.getElementById("society-name").textContent = societyName;
+
+    const select = document.getElementById("flat");
+    let html = '<option value="">Choose a flat…</option>';
+    for (const flat of flats) {
+      const label = flat.label || flat.wing + "-" + flat.number;
+      html += '<option value="' + flat.id + '">' + label + "</option>";
+    }
+    select.innerHTML = html;
+
+    document.getElementById("form-card").hidden = false;
+  }
+
+  // Submit: POST /api/checkin/{token}
+  document.getElementById("checkin-form").addEventListener("submit", async function (event) {
+    event.preventDefault();
+
+    const name = document.getElementById("visitor-name").value.trim();
+    const phone = document.getElementById("visitor-phone").value.trim();
+    const flatId = document.getElementById("flat").value;
+    const type = document.querySelector('input[name="entry_type"]:checked').value;
+
+    if (!name) {
+      showMessage("Please type your name.", true);
+      return;
+    }
+    if (!flatId) {
+      showMessage("Please choose the flat you are visiting.", true);
+      return;
+    }
+
+    const button = document.getElementById("submit-button");
+    button.disabled = true;
+    document.getElementById("message").hidden = true;
+
+    try {
+      const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          visitor_name: name,
+          visitor_phone: phone || null,
+          flat_id: Number(flatId),
+          entry_type: type,
+        }),
+      });
+
+      if (!response.ok) {
+        const problem = await response.json().catch(function () { return {}; });
+        throw new Error(problem.detail || "error " + response.status);
+      }
+
+      // The success card already says "✓ Check-in recorded…"; hide the banner
+      // so the message is not shown twice.
+      document.getElementById("message").hidden = true;
+      document.getElementById("form-card").hidden = true;
+      document.getElementById("success-card").hidden = false;
+    } catch (error) {
+      showMessage("Could not check you in (" + error.message + "). Please ask the guard.", true);
+      button.disabled = false;
+    }
+  });
+
+  loadCheckin();
+</script>
+</body>
+</html>

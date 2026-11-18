@@ -3,57 +3,73 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Guard login</title>
-  <link rel="stylesheet" href="style.css">
+  <title>Committee login — Society Gate</title>
 </head>
 <body>
-  <header class="bar"><h1>Society Gate</h1></header>
-  <main>
-    <h2>Log in</h2>
-    <div>
-      <label for="username">Username</label>
-      <input id="username" type="text" autocomplete="username" autocapitalize="none">
-      <label for="password">Password</label>
-      <input id="password" type="password" autocomplete="current-password">
-      <p id="msg" class="msg" role="alert"></p>
-      <button id="go" class="primary full">Log in</button>
-    </div>
-  </main>
+<main>
+  <div class="card auth-card">
+    <h1>Committee login</h1>
+    <p class="hint">Society Gate — the digital gate register for your society.</p>
 
-  <script src="app.js"></script>
-  <script>
-    // Already logged in? Skip straight to home.
-    if (getToken()) location.href = "home.html";
+    <form id="login-form">
+      <div class="field">
+        <label for="username">Username</label>
+        <input id="username" name="username" autocomplete="username" required>
+      </div>
+      <div class="field field-gap">
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+      </div>
+      <p id="message" class="message" hidden></p>
+      <button type="submit" style="width:100%;margin-top:16px">Log in</button>
+    </form>
 
-    const msg = document.getElementById("msg");
-    const btn = document.getElementById("go");
+    <p class="hint" style="margin-top:18px">
+      New society? <a href="onboard.html">Create a new society</a>.
+    </p>
+  </div>
+</main>
 
-    async function doLogin() {
-      const username = document.getElementById("username").value.trim();
-      const password = document.getElementById("password").value;
-      if (!username || !password) return showMsg(msg, "Enter your username and password.", "error");
+<script src="app.js"></script>
+<script>
+  // This page uses plain fetch() instead of callApi() on purpose: callApi()
+  // redirects to login.html on a 401, and a wrong password IS a 401 here.
+  const form = document.getElementById("login-form");
 
-      btn.disabled = true;
-      showMsg(msg, "Logging in…");
-      try {
-        // Response: { token: "...", user: { id, username, full_name, role, society_id } }
-        const data = await callApi("/login", {
-          method: "POST",
-          body: JSON.stringify({ username, password }),
-        });
-        localStorage.setItem("gate_token", data.token);
-        localStorage.setItem("gate_user", JSON.stringify(data.user));
-        location.href = "home.html";
-      } catch (err) {
-        showMsg(msg, err.message, "error");
-        btn.disabled = false;
+  form.addEventListener("submit", async function (event) {
+    event.preventDefault();
+    clearMessage("message");
+
+    const username = document.getElementById("username").value.trim();
+    const password = document.getElementById("password").value;
+
+    try {
+      const response = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: username, password: password }),
+      });
+
+      const data = await response.json().catch(function () { return {}; });
+
+      if (!response.ok) {
+        throw new Error(data.detail || "Wrong username or password.");
       }
-    }
 
-    btn.addEventListener("click", doLogin);
-    document.getElementById("password").addEventListener("keydown", (e) => {
-      if (e.key === "Enter") doLogin();
-    });
-  </script>
+      const token = saveLogin(data);
+      if (!token) throw new Error("The server did not return a login token.");
+
+      // The committee pages are admin-only; a guard uses the guard pages.
+      if (data.user && data.user.role !== "admin") {
+        localStorage.removeItem(TOKEN_KEY);
+        throw new Error("This is a guard login. Please use the guard app on the phone.");
+      }
+
+      window.location.href = "logs.html";
+    } catch (error) {
+      showMessage("message", error.message, true);
+    }
+  });
+</script>
 </body>
 </html>

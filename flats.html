@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flats — Society Gate</title>
+</head>
+<body>
+<main>
+  <h1>Flats</h1>
+  <p class="hint">The list of flats a visitor or staff member can be logged against.</p>
+
+  <!-- Add one flat: POST /api/flats -->
+  <div class="card">
+    <h2>Add one flat</h2>
+    <form id="flat-form" class="row">
+      <div class="field">
+        <label for="wing">Wing</label>
+        <input id="wing" placeholder="A" required>
+      </div>
+      <div class="field">
+        <label for="number">Flat number</label>
+        <input id="number" placeholder="101" required>
+      </div>
+      <div class="field" style="flex:0 0 auto">
+        <button type="submit">Add flat</button>
+      </div>
+    </form>
+    <p id="flat-message" class="message" hidden></p>
+  </div>
+
+  <!-- Bulk upload: POST /api/flats/upload-csv (a file input + FormData) -->
+  <div class="card">
+    <h2>Upload flats from a CSV file</h2>
+    <p class="hint">
+      The file should have a header row with <code>wing</code> and <code>number</code> columns,
+      for example: <code>wing,number</code> then <code>A,101</code>.
+    </p>
+    <input id="csv-file" type="file" accept=".csv,text/csv">
+    <p id="csv-message" class="message" hidden></p>
+  </div>
+
+  <div class="card">
+    <h2>All flats</h2>
+    <table>
+      <thead>
+        <tr><th>Flat</th><th>Wing</th><th>Number</th></tr>
+      </thead>
+      <tbody id="flats-body">
+        <tr><td colspan="3" class="hint">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</main>
+
+<script src="app.js"></script>
+<script>
+  const flatsBody = document.getElementById("flats-body");
+
+  async function loadFlats() {
+    try {
+      const data = await callApi("/api/flats");
+      // Accept a plain list or {flats: [...]}.
+      const flats = Array.isArray(data) ? data : (data.flats || []);
+
+      if (flats.length === 0) {
+        flatsBody.innerHTML = '<tr><td colspan="3" class="hint">No flats yet — add one above.</td></tr>';
+        return;
+      }
+
+      let html = "";
+      for (const flat of flats) {
+        html +=
+          "<tr>" +
+          "<td>" + escapeHtml(flatLabel(flat)) + "</td>" +
+          "<td>" + escapeHtml(flat.wing) + "</td>" +
+          "<td>" + escapeHtml(flat.number) + "</td>" +
+          "</tr>";
+      }
+      flatsBody.innerHTML = html;
+    } catch (error) {
+      flatsBody.innerHTML = "";
+      showMessage("flat-message", "Could not load flats: " + error.message, true);
+    }
+  }
+
+  // ---- Add one flat ----
+  document.getElementById("flat-form").addEventListener("submit", async function (event) {
+    event.preventDefault();
+    clearMessage("flat-message");
+
+    const wing = document.getElementById("wing").value.trim();
+    const number = document.getElementById("number").value.trim();
+
+    try {
+      await callApi("/api/flats", {
+        method: "POST",
+        body: JSON.stringify({ wing: wing, number: number }),
+      });
+      showMessage("flat-message", "Flat " + wing + "-" + number + " added.", false);
+      document.getElementById("number").value = "";
+      loadFlats();
+    } catch (error) {
+      showMessage("flat-message", "Could not add the flat: " + error.message, true);
+    }
+  });
+
+  // ---- CSV upload ----
+  // The file goes up as multipart form data under the field name "file".
+  document.getElementById("csv-file").addEventListener("change", async function (event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    clearMessage("csv-message");
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const result = await callApi("/api/flats/upload-csv", {
+        method: "POST",
+        body: formData,
+      });
+      const created = (result && result.created) ?? 0;
+      const skipped = (result && result.skipped) ?? 0;
+      showMessage("csv-message", "Upload done: " + created + " created, " + skipped + " skipped.", false);
+      event.target.value = ""; // lets the same file be picked again
+      loadFlats();
+    } catch (error) {
+      showMessage("csv-message", "Upload failed: " + error.message, true);
+    }
+  });
+
+  (async function start() {
+    const me = await requireAdmin();
+    if (!me) return;
+    renderNav("flats.html");
+    loadFlats();
+  })();
+</script>
+</body>
+</html>

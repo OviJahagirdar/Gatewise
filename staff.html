@@ -3,93 +3,340 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Staff</title>
-  <link rel="stylesheet" href="style.css">
+  <title>Staff — Society Gate</title>
 </head>
 <body>
-  <header class="bar">
-    <h1>Staff</h1>
-    <a href="home.html">Back</a>
-  </header>
+<main>
+  <h1>Domestic staff</h1>
+  <p class="hint">Maids, cooks, drivers and anyone else who comes in regularly.</p>
 
-  <main>
-    <label for="q">Search by name</label>
-    <input id="q" type="search" placeholder="e.g. Sunita" autocomplete="off">
-    <p id="msg" class="msg" role="alert"></p>
-    <ul id="staff" class="list"></ul>
-  </main>
+  <!-- Register a brand-new staff member: POST /api/staff -->
+  <div class="card">
+    <h2>Register a staff member</h2>
+    <form id="staff-form" class="row">
+      <div class="field">
+        <label for="new-name">Name</label>
+        <input id="new-name" placeholder="Sunita" required>
+      </div>
+      <div class="field">
+        <label for="new-role">Role</label>
+        <input id="new-role" list="role-options" placeholder="maid" required>
+        <datalist id="role-options">
+          <option value="maid"></option>
+          <option value="cook"></option>
+          <option value="driver"></option>
+          <option value="nurse"></option>
+          <option value="other"></option>
+        </datalist>
+      </div>
+      <div class="field">
+        <label for="new-status">Verification</label>
+        <select id="new-status">
+          <option value="not_done">Not done</option>
+          <option value="pending">Pending</option>
+          <option value="verified">Verified</option>
+        </select>
+      </div>
+      <div class="field" style="flex:2 1 220px">
+        <label for="new-flats">Flats served (hold Ctrl / Cmd to pick several)</label>
+        <select id="new-flats" multiple size="4"></select>
+      </div>
+      <div class="field" style="flex:0 0 auto">
+        <button type="submit">Register staff</button>
+      </div>
+    </form>
+    <p id="register-message" class="message" hidden></p>
+  </div>
 
-  <script src="app.js"></script>
-  <script>
-    requireLogin();
+  <!-- Search + list: GET /api/staff?search= -->
+  <div class="card">
+    <h2>Staff list</h2>
+    <form id="search-form" class="row">
+      <div class="field" style="flex:1 1 260px">
+        <label for="search">Search by name</label>
+        <input id="search" placeholder="Sunita">
+      </div>
+      <div class="field" style="flex:0 0 auto">
+        <button type="submit">Search</button>
+      </div>
+      <div class="field" style="flex:0 0 auto">
+        <button type="button" id="clear-search" class="secondary">Clear</button>
+      </div>
+    </form>
+    <p class="hint" style="margin-top:12px">Click a row to open that person's details.</p>
+    <table>
+      <thead>
+        <tr><th>Name</th><th>Role</th><th>Verification</th><th>Flats</th><th>Active</th></tr>
+      </thead>
+      <tbody id="staff-body">
+        <tr><td colspan="5" class="hint">Loading…</td></tr>
+      </tbody>
+    </table>
+    <p id="list-message" class="message" hidden></p>
+  </div>
 
-    const q = document.getElementById("q");
-    const listEl = document.getElementById("staff");
-    const msg = document.getElementById("msg");
+  <!-- Detail panel: GET /api/staff/{id}, PATCH /api/staff/{id}, photo upload -->
+  <div class="card" id="detail-card" hidden>
+    <h2 id="detail-title">Staff details</h2>
 
-    async function load() {
-      try {
-        // Two calls: matching staff, and everyone currently inside (to know who can "Log out")
-        const [staff, inside] = await Promise.all([
-          callApi("/staff?search=" + encodeURIComponent(q.value.trim())),
-          callApi("/entries/inside"),
-        ]);
-        // staff_id -> the open entry, so Exit knows which entry to close
-        const openEntry = {};
-        inside.filter((e) => e.entry_type === "staff" && e.staff).forEach((e) => { openEntry[e.staff.id] = e.id; });
+    <div class="row">
+      <div class="field" style="flex:2 1 220px">
+        <label for="detail-photo">Photo</label>
+        <img id="detail-photo" alt="" style="max-width:120px;max-height:120px;border-radius:8px;border:1px solid #e2e8f0;display:none">
+        <input id="photo-file" type="file" accept="image/*" style="margin-top:8px">
+        <p id="photo-message" class="message" hidden></p>
+      </div>
+    </div>
 
-        if (staff.length === 0) {
-          listEl.innerHTML = '<li class="empty">No staff found with that name.</li>';
-          return;
-        }
-        listEl.innerHTML = staff.map((s) => {
-          const entryId = openEntry[s.id];
-          // verification_status is 'verified', 'pending' or 'not_done'
-          const status = { verified: "Verified", pending: "Pending" }[s.verification_status] || "Not verified";
-          const good = s.verification_status === "verified";
-          const action = entryId
-            ? `<button class="exit" data-exit="${entryId}">Log out</button>`
-            : `<button class="go" data-in="${s.id}">Log in</button>`;
-          return `
-            <li class="row" ${entryId ? "" : 'style="border-left-color: var(--line)"'}>
-              <div>
-                <div class="name">${esc(s.name)}</div>
-                <div class="meta">${esc(s.role)} · <span class="badge ${good ? "" : "pending"}">${status}</span></div>
-              </div>
-              ${action}
-            </li>`;
-        }).join("");
-      } catch (err) {
-        showMsg(msg, err.message, "error");
-      }
+    <form id="detail-form" class="row" style="margin-top:8px">
+      <div class="field">
+        <label for="detail-name">Name</label>
+        <input id="detail-name" required>
+      </div>
+      <div class="field">
+        <label for="detail-role">Role</label>
+        <input id="detail-role" list="role-options" required>
+      </div>
+      <div class="field">
+        <label for="detail-status">Verification</label>
+        <select id="detail-status">
+          <option value="not_done">Not done</option>
+          <option value="pending">Pending</option>
+          <option value="verified">Verified</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="detail-date">Verification date</label>
+        <input id="detail-date" type="date">
+      </div>
+      <div class="field" style="flex:2 1 220px">
+        <label for="detail-flats">Flats served</label>
+        <select id="detail-flats" multiple size="4"></select>
+      </div>
+      <div class="field" style="flex:0 0 auto">
+        <label style="display:flex;gap:6px;align-items:center">
+          <input id="detail-active" type="checkbox"> Active
+        </label>
+      </div>
+      <div class="field" style="flex:0 0 auto">
+        <button type="submit">Save changes</button>
+      </div>
+    </form>
+    <p id="detail-message" class="message" hidden></p>
+  </div>
+</main>
+
+<script src="app.js"></script>
+<script>
+  const staffBody = document.getElementById("staff-body");
+  let allFlats = [];       // flats from GET /api/flats, used by both flat pickers
+  let selectedStaffId = null;
+  let selectedRow = null;
+
+  // Fill a <select multiple> with every flat; selectedIds marks the ones
+  // this staff member serves.
+  function fillFlatPicker(selectId, selectedIds) {
+    const select = document.getElementById(selectId);
+    const chosen = selectedIds || [];
+    let html = "";
+    for (const flat of allFlats) {
+      const isChosen = chosen.indexOf(flat.id) !== -1 ? " selected" : "";
+      html += '<option value="' + flat.id + '"' + isChosen + ">" + escapeHtml(flatLabel(flat)) + "</option>";
     }
+    select.innerHTML = html;
+  }
 
-    listEl.addEventListener("click", async (ev) => {
-      const btn = ev.target.closest("button");
-      if (!btn) return;
-      btn.disabled = true;
-      try {
-        if (btn.dataset.in) {
-          await callApi("/entries", {
-            method: "POST",
-            body: JSON.stringify({ entry_type: "staff", staff_id: Number(btn.dataset.in) }),
-          });
-        } else {
-          await callApi(`/entries/${btn.dataset.exit}/exit`, { method: "POST" });
-        }
-        showMsg(msg, "");
-        load();
-      } catch (err) {
-        showMsg(msg, err.message, "error");
-        btn.disabled = false;
-      }
+  function selectedFlatIds(selectId) {
+    const select = document.getElementById(selectId);
+    return Array.from(select.selectedOptions).map(function (option) {
+      return Number(option.value);
     });
+  }
 
-    // Wait a moment after typing stops before searching
-    let timer;
-    q.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(load, 250); });
+  function statusBadge(status) {
+    const safe = status || "not_done";
+    return '<span class="badge ' + escapeHtml(safe) + '">' + escapeHtml(safe.replace("_", " ")) + "</span>";
+  }
 
-    load();
-  </script>
+  function flatsText(staff) {
+    if (!staff.flats || staff.flats.length === 0) return "—";
+    return staff.flats.map(function (flat) { return flatLabel(flat); }).join(", ");
+  }
+
+  async function loadFlats() {
+    try {
+      const data = await callApi("/api/flats");
+      allFlats = Array.isArray(data) ? data : (data.flats || []);
+    } catch (error) {
+      showMessage("list-message", "Could not load the flat list: " + error.message, true);
+      allFlats = [];
+    }
+    fillFlatPicker("new-flats", []);
+    fillFlatPicker("detail-flats", []);
+  }
+
+  // ---- List ----
+  async function loadStaff() {
+    const search = document.getElementById("search").value.trim();
+    try {
+      const query = search ? "?search=" + encodeURIComponent(search) : "";
+      const data = await callApi("/api/staff" + query);
+      const staff = Array.isArray(data) ? data : (data.staff || []);
+
+      if (staff.length === 0) {
+        staffBody.innerHTML = '<tr><td colspan="5" class="hint">No staff found.</td></tr>';
+        return;
+      }
+
+      let html = "";
+      for (const person of staff) {
+        html +=
+          '<tr class="clickable" data-staff-id="' + person.id + '">' +
+          "<td>" + escapeHtml(person.name) + "</td>" +
+          "<td>" + escapeHtml(person.role) + "</td>" +
+          "<td>" + statusBadge(person.verification_status) + "</td>" +
+          "<td>" + escapeHtml(flatsText(person)) + "</td>" +
+          "<td>" + (person.is_active ? "Yes" : '<span class="badge">inactive</span>') + "</td>" +
+          "</tr>";
+      }
+      staffBody.innerHTML = html;
+
+      // Clicking a row opens the detail panel below the list.
+      staffBody.querySelectorAll("tr[data-staff-id]").forEach(function (row) {
+        row.addEventListener("click", function () {
+          if (selectedRow) selectedRow.classList.remove("selected");
+          row.classList.add("selected");
+          selectedRow = row;
+          openDetail(Number(row.dataset.staffId));
+        });
+      });
+    } catch (error) {
+      staffBody.innerHTML = "";
+      showMessage("list-message", "Could not load staff: " + error.message, true);
+    }
+  }
+
+  // ---- Detail panel ----
+  async function openDetail(staffId) {
+    selectedStaffId = staffId;
+    clearMessage("detail-message");
+    clearMessage("photo-message");
+
+    try {
+      const staff = await callApi("/api/staff/" + staffId);
+
+      document.getElementById("detail-card").hidden = false;
+      document.getElementById("detail-title").textContent = staff.name + " — details";
+      document.getElementById("detail-name").value = staff.name || "";
+      document.getElementById("detail-role").value = staff.role || "";
+      document.getElementById("detail-status").value = staff.verification_status || "not_done";
+      document.getElementById("detail-date").value = staff.verification_date || "";
+      document.getElementById("detail-active").checked = Boolean(staff.is_active);
+
+      const flatIds = (staff.flats || []).map(function (flat) { return flat.id; });
+      fillFlatPicker("detail-flats", flatIds);
+
+      const photo = document.getElementById("detail-photo");
+      if (staff.photo_url) {
+        photo.src = staff.photo_url;
+        photo.style.display = "block";
+      } else {
+        photo.removeAttribute("src");
+        photo.style.display = "none";
+      }
+    } catch (error) {
+      showMessage("detail-message", "Could not open this staff member: " + error.message, true);
+    }
+  }
+
+  document.getElementById("detail-form").addEventListener("submit", async function (event) {
+    event.preventDefault();
+    clearMessage("detail-message");
+
+    if (!selectedStaffId) return;
+
+    try {
+      await callApi("/api/staff/" + selectedStaffId, {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: document.getElementById("detail-name").value.trim(),
+          role: document.getElementById("detail-role").value.trim(),
+          verification_status: document.getElementById("detail-status").value,
+          verification_date: document.getElementById("detail-date").value || null,
+          is_active: document.getElementById("detail-active").checked,
+          flat_ids: selectedFlatIds("detail-flats"),
+        }),
+      });
+      showMessage("detail-message", "Saved.", false);
+      loadStaff();
+    } catch (error) {
+      showMessage("detail-message", "Could not save: " + error.message, true);
+    }
+  });
+
+  // ---- Photo upload (multipart form data, field name "file") ----
+  document.getElementById("photo-file").addEventListener("change", async function (event) {
+    const file = event.target.files[0];
+    if (!file || !selectedStaffId) return;
+
+    clearMessage("photo-message");
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      await callApi("/api/staff/" + selectedStaffId + "/photo", {
+        method: "POST",
+        body: formData,
+      });
+      showMessage("photo-message", "Photo uploaded.", false);
+      event.target.value = "";
+      openDetail(selectedStaffId);
+    } catch (error) {
+      showMessage("photo-message", "Upload failed: " + error.message, true);
+    }
+  });
+
+  // ---- Register a new staff member ----
+  document.getElementById("staff-form").addEventListener("submit", async function (event) {
+    event.preventDefault();
+    clearMessage("register-message");
+
+    try {
+      await callApi("/api/staff", {
+        method: "POST",
+        body: JSON.stringify({
+          name: document.getElementById("new-name").value.trim(),
+          role: document.getElementById("new-role").value.trim(),
+          verification_status: document.getElementById("new-status").value,
+          flat_ids: selectedFlatIds("new-flats"),
+        }),
+      });
+      showMessage("register-message", "Staff member registered.", false);
+      document.getElementById("staff-form").reset();
+      fillFlatPicker("new-flats", []);
+      loadStaff();
+    } catch (error) {
+      showMessage("register-message", "Could not register: " + error.message, true);
+    }
+  });
+
+  document.getElementById("search-form").addEventListener("submit", function (event) {
+    event.preventDefault();
+    loadStaff();
+  });
+
+  document.getElementById("clear-search").addEventListener("click", function () {
+    document.getElementById("search").value = "";
+    loadStaff();
+  });
+
+  (async function start() {
+    const me = await requireAdmin();
+    if (!me) return;
+    renderNav("staff.html");
+    await loadFlats();
+    loadStaff();
+  })();
+</script>
 </body>
 </html>

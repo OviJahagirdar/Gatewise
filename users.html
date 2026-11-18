@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Users — Society Gate</title>
+</head>
+<body>
+<main>
+  <h1>Users</h1>
+  <p class="hint">Logins for the gate. A guard uses the guard pages; exactly the same login works there.</p>
+
+  <!-- Add a guard or another admin: POST /api/users -->
+  <div class="card">
+    <h2>Add a login</h2>
+    <form id="user-form" class="row">
+      <div class="field">
+        <label for="full-name">Full name</label>
+        <input id="full-name" placeholder="Ramu Guard" required>
+      </div>
+      <div class="field">
+        <label for="username">Username</label>
+        <input id="username" autocomplete="off" placeholder="ramu" required>
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="new-password" minlength="4" required>
+      </div>
+      <div class="field">
+        <label for="role">Role</label>
+        <select id="role">
+          <option value="guard">Guard</option>
+          <option value="admin">Committee (admin)</option>
+        </select>
+      </div>
+      <div class="field" style="flex:0 0 auto">
+        <button type="submit">Add user</button>
+      </div>
+    </form>
+    <p id="message" class="message" hidden></p>
+  </div>
+
+  <div class="card">
+    <table>
+      <thead>
+        <tr><th>Name</th><th>Username</th><th>Role</th></tr>
+      </thead>
+      <tbody id="users-body">
+        <tr><td colspan="3" class="hint">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</main>
+
+<script src="app.js"></script>
+<script>
+  const usersBody = document.getElementById("users-body");
+
+  async function loadUsers() {
+    try {
+      const data = await callApi("/api/users");
+      const users = Array.isArray(data) ? data : (data.users || []);
+
+      if (users.length === 0) {
+        usersBody.innerHTML = '<tr><td colspan="3" class="hint">No users yet.</td></tr>';
+        return;
+      }
+
+      let html = "";
+      for (const user of users) {
+        html +=
+          "<tr>" +
+          "<td>" + escapeHtml(user.full_name) + "</td>" +
+          "<td>" + escapeHtml(user.username) + "</td>" +
+          '<td><span class="badge">' + escapeHtml(user.role) + "</span></td>" +
+          "</tr>";
+      }
+      usersBody.innerHTML = html;
+    } catch (error) {
+      usersBody.innerHTML = "";
+      showMessage("message", "Could not load users: " + error.message, true);
+    }
+  }
+
+  document.getElementById("user-form").addEventListener("submit", async function (event) {
+    event.preventDefault();
+    clearMessage("message");
+
+    const fullName = document.getElementById("full-name").value.trim();
+    const username = document.getElementById("username").value.trim();
+    const password = document.getElementById("password").value;
+    const role = document.getElementById("role").value;
+
+    try {
+      await callApi("/api/users", {
+        method: "POST",
+        body: JSON.stringify({
+          full_name: fullName,
+          username: username,
+          password: password,
+          role: role,
+        }),
+      });
+      showMessage("message", "Login created for " + fullName + " (" + role + ").", false);
+      document.getElementById("user-form").reset();
+      loadUsers();
+    } catch (error) {
+      showMessage("message", "Could not add the user: " + error.message, true);
+    }
+  });
+
+  (async function start() {
+    const me = await requireAdmin();
+    if (!me) return;
+    renderNav("users.html");
+    loadUsers();
+  })();
+</script>
+</body>
+</html>
