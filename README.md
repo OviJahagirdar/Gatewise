@@ -1,4 +1,4 @@
-# Society Gate App
+# Gatewise
 
 A simple website that replaces the paper visitor register of a small residential society (20–150 flats).
 
